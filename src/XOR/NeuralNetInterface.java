@@ -1,3 +1,5 @@
+package XOR;
+
 public interface NeuralNetInterface extends CommonInterface{
     final double bias = 1.0;
      /**
