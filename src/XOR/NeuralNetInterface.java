@@ -31,7 +31,7 @@ public interface NeuralNetInterface extends CommonInterface{
     /**
      * Method implements general sigmoid asymtote bound (a,b)
      * @param x: Input
-     * @return f(x0 = b_minus_a / (1+exp(-x)) - minus_a
+     * @return f(x) = b_minus_a / (1+exp(-x)) - minus_a
      */
     public double customSigmoid(double x);
 
