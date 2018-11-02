@@ -1,109 +1,88 @@
 package XOR;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.Random;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+
 
 public class NeuralNet implements NeuralNetInterface{
-    public double bias = 1.0;
+    // NN Constants
+    private boolean bipolar;
+    private int argNumInputs, argNumHidden, argA, argB;
 
-    public double a;
-    public double b;
-    public double b_minus_a;
-    public double minus_a;
-    public double learningRate;
-    public double momentumTerm;
-    public int numInputs;
-    public int numHidden;
+    // NN Rates
+    private double argMomentumTerm;
+    private double argRate;
 
-    public double[][] weightInputToHidden;
-    public double[][] previousWeightInputToHidden;
+    // Weight Storing Arrays
+    private double[][] x2h_w, prev_x2h_w, tempx2h;
+    private double[] h2y_w, prev_h2y_w, temph2y;
 
-    public double[] weightHiddenToOutput;
-    public double[] previousWeightHiddenToOutput;
-
-    public double [] hiddenNeuron; 					// hidden neuron vector
-
-
-    public double[][] inputValues;
-    public double[] targetValues;
-    public double tmpOut = 0;
-    public double outputError = 0;
-    public double[] hiddenError;
-
-    // temp store current weight, used in momentum
-    public double[][] tempWeightInputToHidden;
-    public double[] tempWeightHiddenToOutput;
-    public double[] hiddenValues;
+    private double[] hidden_out, initialHidden;
 
 
     /**
-     * Constructor for NeuralNet
+     * Constructor. (Cannot be declared in an interface, but your implementation will need one)
      * @param argNumInputs The number of inputs in your input vector
      * @param argNumHidden The number of hidden neurons in your hidden layer. Only a single hidden layer is supported
      * @param argLearningRate The learning rate coefficient
      * @param argMomentumTerm The momentum coefficient
      * @param argA Integer lower bound of sigmoid used by the output neuron only.
      * @param argB Integer upper bound of sigmoid used by the output neuron only.
-     */
-    public NeuralNet(int argNumInputs, int argNumHidden, double argLearningRate, double argMomentumTerm, double argA, double argB)
-    {
-        // Update our private variables
-        a = argA;
-        b = argB;
-        b_minus_a = b - a;
-        minus_a = -1 * a;
+     **/
 
-        learningRate = argLearningRate;
-        momentumTerm = argMomentumTerm;
+    public NeuralNet(int argNumInputs, int argNumHidden, double argLearningRate,double argMomentumTerm, int argA, int argB, boolean bipolar) {
+        //Initialize Constants
+        this.argA = argA;
+        this.argB = argB;
+        this.argNumInputs = argNumInputs;
+        this.argNumHidden = argNumHidden;
 
-        numInputs = argNumInputs;
-        numHidden = argNumHidden;
+        // Part 3
+        this.argRate = argLearningRate;
+        this.argMomentumTerm = argMomentumTerm;
+        this.bipolar = bipolar;
 
-        weightInputToHidden = new double[numHidden][numInputs + 1];
-        previousWeightInputToHidden = new double[numHidden][numInputs + 1];
+        //Initialize Weights for Synapses, add one to size for biases
+        x2h_w = new double[argNumHidden][argNumInputs+1];
+        h2y_w = new double[argNumHidden+1];
 
-        weightHiddenToOutput = new double[numHidden + 1];
-        previousWeightHiddenToOutput = new double[numHidden + 1];
+        //Save Previous Weights , initialize them first to 0 then update later
+        hidden_out = new double[argNumHidden];
+        prev_x2h_w = new double[argNumHidden][argNumInputs+1];
+        prev_h2y_w = new double[argNumHidden+1];
 
-
-        // initialize hidden layer
-        hiddenNeuron = new double [numHidden];
-        hiddenValues = new double[numHidden];
-        inputValues = new double[numHidden][numInputs + 1];
-        targetValues = new double[numHidden];
-        hiddenError = new double[numHidden];
-
-
-        // temp store current weight, used in momentum
-        tempWeightInputToHidden = new double[numHidden][numInputs + 1];
-        tempWeightHiddenToOutput = new double[numHidden + 1];
-
-
+        //Temporary Arrays for Swapping
+        initialHidden = new double[argNumHidden];
+        tempx2h = new double[argNumHidden][argNumInputs+1];
+        temph2y = new double[argNumHidden+1];
+        //zeroWeights();
     }
-
 
     /**
      * Returns bipolar sigmoid for input x
      * @param x: Input
      * @return f(x) = 2 / (1+exp(-x)) - 1
      */
-    public double sigmoid(double x){
-        return 2 / (1 + Math.exp(-1 * x));
+    public double sigmoid(double x) {
+        return 2 * ((argB - argA)/(1 + Math.exp(-x)) + argA) - 1;
     }
-
 
     /**
      * Method implements general sigmoid asymtote bound (a,b)
      * @param x: Input
      * @return f(x) = b_minus_a / (1+exp(-x)) - minus_a
      */
-    public double customSigmoid(double x){
-        return (b_minus_a) / ((1 + Math.exp(-1 * x)) - minus_a);
+    public double customSigmoid(double x) {
+        return (argB - argA)/(1 + Math.exp(-x)) + argA;
     }
 
     /**
@@ -113,233 +92,165 @@ public class NeuralNet implements NeuralNetInterface{
      * [0] & [1] are the hidden & [2] the bias.
      * We also initialise the last weight change arrays. This is to implement the alpha term.
      */
-    public void initializeWeights(){
-        // Initialize the weight InputToHidden to random values
-        for (int i = 0; i < numHidden; i++) {
-            for (int j = 0; j < numInputs + 1; j++) {
-                weightInputToHidden[i][j] = Math.random() - 0.5;
+    public void initializeWeights() {
+        Random randweight = new Random();
+        for(int i=0; i<argNumHidden; i++) {
+            for(int j=0; j <argNumInputs; j++) {
+                x2h_w[i][j] = randweight.nextDouble() - 0.5;
+                prev_x2h_w[i][j] = x2h_w[i][j];
             }
+            x2h_w[i][argNumInputs] = randweight.nextDouble () - 0.5;
+            prev_x2h_w[i][argNumInputs] = x2h_w[i][argNumInputs];
+
         }
 
-        // Initialize the weight HiddenToOutput to random values
-        for (int j = 0; j < numHidden + 1; j++) {
-            weightHiddenToOutput[j] = Math.random() - 0.5;
+        for(int i=0; i<argNumHidden; i++) {
+            h2y_w[i] = randweight.nextDouble() - 0.5;
+            prev_h2y_w[i] = h2y_w[i];
         }
+        h2y_w[argNumHidden] = randweight.nextDouble () - 0.5;
+        prev_h2y_w[argNumHidden] = h2y_w[argNumHidden];
     }
+
     /**
      * Initialize weights to 0
      */
-    public void zeroWeights(){
-        // Initialize the weight InputToHidden to random values
-        for (int i = 0; i < numHidden; i++) {
-            for (int j = 0; j < numInputs + 1; j++) {
-                weightInputToHidden[i][j] = 0;
+    public void zeroWeights() {
+        for(int i=0; i<argNumHidden; i++)
+            for(int j=0; j < argNumInputs + 1; j++) {
+                prev_x2h_w[i][j] = 0;
             }
-        }
 
-        // Initialize the weight HiddenToOutput to random values
-        for (int j = 0; j < numHidden + 1; j++) {
-            weightHiddenToOutput[j] = 0;
+        for(int i=0; i<=argNumHidden; i++) {
+            prev_h2y_w[i] = 0;
         }
     }
 
     /**
      *
-     * @param x: The input Vector. double array.
+     * @param X: The input Vector. double array.
      * @return Value returned by th LUT or NN for input vector
      */
-    public double outputFor(double [] x){
-
-        double [] weightedSumHidden = new double[numHidden];
-        double weightedSumOutput;
-
-        if ( x.length != numInputs ) {
-            System.out.println("-** Length of input vector expected: " + numInputs + "Got: " + x.length);
-            return 0;
-        }
-
-        // Compute weighted sum at hidden neurons
-        for (int i = 0; i < numHidden; i++){
-            weightedSumHidden[i] = 0;
-            for (int j = 0; j < numInputs; j++){
-                weightedSumHidden[i] += x[j] * weightInputToHidden[i][j];
+    public double outputFor(double[] X) {
+        for(int i=0; i<argNumHidden; i++) {
+            initialHidden[i] = x2h_w[i][argNumInputs]*1.0;
+            for(int j=0; j < argNumInputs; j++) {
+                initialHidden[i] += x2h_w[i][j] * X[j];
             }
-            weightedSumHidden[i] += bias * weightInputToHidden[i][numInputs];
-            hiddenNeuron[i] = sigmoid(weightedSumHidden[i]);
+            hidden_out[i] = customSigmoid(initialHidden[i]);
+            if(bipolar){
+                hidden_out[i] = sigmoid(initialHidden[i]);
+            }
         }
 
-        // Compute weighted sum of output neuron
-        weightedSumOutput = 0;
-        for (int i = 0; i < numHidden; i++)
-            weightedSumOutput += hiddenNeuron[i] * weightHiddenToOutput[i];
-        weightedSumOutput += bias * weightHiddenToOutput[numHidden];
+        double y = 0;
+        for(int i=0; i<argNumHidden; i++) {
+            y +=  ( h2y_w[i] * hidden_out[i] );
+        }
 
-        // We have the final output. Return it.
-        return customSigmoid(weightedSumOutput);
+        y += h2y_w[argNumHidden] * 1.0;
 
+        //Bipolar -1 to 1 squish
+        if(bipolar){
+            return sigmoid(y);
+        }
+        return customSigmoid(y);
     }
-
 
     /**
      * Method tells NN or LUT output value to map to input vector
      * ex. The desired correct output value for given input
-     * @param x: The input vector
-     * @param argvalue: The new value to learn
+     * @param X: The input vector
+     * @param argValue: The new value to learn
      * @return The error of output for input vector
      */
-    public double train(double [] x, double argvalue){
-        // feed forward
-        calcHiddenValue(x, argvalue);
-        calcOutputValue();
+    public double train(double[] X, double argValue) {
+        //2a - FWD PROP
+        double y = outputFor(X);
+        double fprime = y * (1 - y);
 
-        // backPrapogation
-        calcOutputError(argvalue);
-        calcHiddenError();
+        //System.out.println("predict: " + y);
 
-        // update weights
-        updateWeightInputToHidden(x);
-        updateWeightHiddenToOutput();
-        return 0;
-    }
+        // For bipolar
+        if(bipolar) {
+            fprime = 0.5 * (1 - Math.pow(y, 2));
+        }
 
-    private void calcHiddenValue(double[] X, double target) {
-        for (int i = 0; i < numHidden; i++) {
-            hiddenValues[i] = 0;
-            for (int j = 0; j < numInputs; j++) {
-                hiddenValues[i] += X[j] * weightInputToHidden[i][j];
+        //2b - BWD PROP
+        double outErr = (argValue - y) * fprime;
+
+        double hiddenErr[] = new double[argNumHidden];
+        for(int i = 0; i < argNumHidden; i++) {
+            hiddenErr[i] = h2y_w[i] * outErr * (hidden_out[i] - argA) * (argB - hidden_out[i])/(argB - argA);
+        }
+
+        //2c - Weight Updates
+        // Update hidden to output synapse weights
+        System.arraycopy(h2y_w, 0, temph2y, 0, h2y_w.length);
+        for(int i = 0; i < argNumHidden; i++) {
+            h2y_w[i] += (argRate * outErr * hidden_out[i]) + (h2y_w[i] - prev_h2y_w[i]) * argMomentumTerm;
+        }
+        // Update Bias
+        h2y_w[argNumHidden] += (argRate * outErr * 1)
+                +(h2y_w[argNumHidden] - prev_h2y_w[argNumHidden])
+                * argMomentumTerm;
+        System.arraycopy(temph2y, 0, prev_h2y_w, 0, temph2y.length);
+
+
+        // Update input to hidden synapse weights
+        for (int i = 0; i < argNumHidden; i++){
+            System.arraycopy( x2h_w[i], 0, tempx2h[i], 0, x2h_w[i].length );
+        }
+
+        for(int i = 0; i < argNumHidden; i++) {
+            for(int j = 0; j < argNumInputs; j++) {
+                x2h_w[i][j] += (argRate * hiddenErr[i] * X[j])
+                        + (x2h_w[i][j] - prev_x2h_w[i][j])
+                        * argMomentumTerm;
             }
-            hiddenValues[i] += weightInputToHidden[i][numInputs] * 1; // bias
 
-            // processed by activation function
-            hiddenValues[i] = sigmoid(hiddenValues[i]);
-        }
-    }
-
-    private void calcOutputValue() {
-        double tmpOut = 0;
-        for (int i = 0; i < numHidden; i++) {
-            tmpOut += hiddenValues[i] * weightHiddenToOutput[i];
-        }
-        tmpOut += weightHiddenToOutput[numHidden] * 1; // bias
-        tmpOut = sigmoid(tmpOut); // activation function
-    }
-
-    private void calcOutputError(double target) {
-        // for bipolar input
-        outputError = 0.5 * (1 +tmpOut) * (1 - tmpOut) * (target - tmpOut);
-
-        // for binary input
-        //outputError = tmpOut * (1 - tmpOut) * (target - tmpOut);
-        //System.out.println("output error:" + outputError + "\ttmpOut: " + tmpOut + "\ttarget: " + target);
-    }
-
-    private void calcHiddenError() {
-        // for bipolar input
-        for (int i = 0; i < numHidden; i++) {
-            hiddenError[i] = 0.5 * (1 +hiddenValues[i]) * (1 - hiddenValues[i])
-                    * outputError * weightHiddenToOutput[i];
-
-            // for binary input
-//		for (int i = 0; i < numHidden; i++) {
-//			hiddenError[i] = hiddenValues[i] * (1 - hiddenValues[i])
-//					* outputError * weightHiddenToOutput[i];
-            //System.out.println(i + " hidden error" + hiddenError[i]);
-        }
-    }
-
-    private void updateWeightInputToHidden(double[] X) {
-        // // backup current weight
-        for (int i = 0; i < numHidden; i++) {
-            System.arraycopy(weightInputToHidden[i], 0, tempWeightInputToHidden[i], 0,
-                    weightInputToHidden[i].length);
+            // Update Biases
+            x2h_w[i][argNumInputs] += (argRate * hiddenErr[i] * 1)
+                    + (x2h_w[i][argNumInputs] - prev_x2h_w[i][argNumInputs])
+                    * argMomentumTerm;
         }
 
-        // update weightInputToHidden
-        for (int i = 0; i < numHidden; i++) {
-            for (int j = 0; j < numInputs; j++) {
-                weightInputToHidden[i][j] += learningRate
-                        * hiddenError[i] * X[j] + momentumTerm
-                        * getPreviousToHiddenDeltaWeight(i, j);
-                //System.out.println("numHidden: " + i + "  Inputs: " + X[j] + "  weight: " +weightInputToHidden[i][j]);
-            }
-            // for bias term below
-            weightInputToHidden[i][numInputs] += learningRate
-                    * hiddenError[i] + momentumTerm
-                    * getPreviousToHiddenDeltaWeight(i, numInputs);
-            //System.out.println("numHidden: " + i + "  Inputs: " +  X[numInputs] + "  weight: " +weightInputToHidden[i][numInputs]);
+        // Update input to hidden synapse weights
+        for (int i = 0; i < argNumHidden; i++){
+            System.arraycopy( tempx2h[i], 0, prev_x2h_w[i], 0, tempx2h[i].length );
         }
 
-        // update previous weight
-        for (int i = 0; i < numHidden; i++) {
-            System.arraycopy(tempWeightInputToHidden[i], 0, previousWeightInputToHidden[i], 0,
-                    weightInputToHidden[i].length);
-        }
-
+        // Return LS error
+        return Math.pow((y - argValue), 2);
     }
 
-    private void updateWeightHiddenToOutput() {
-        // backup current weight
-        System.arraycopy(weightHiddenToOutput, 0, tempWeightHiddenToOutput, 0,
-                weightHiddenToOutput.length);
-
-        for (int i = 0; i < numHidden; i++) {
-            weightHiddenToOutput[i] += learningRate * outputError
-                    * hiddenValues[i] + momentumTerm
-                    * getPreviousToOutDeltaWeight(i);
-            //System.out.println("numHidden: " + i + "  weight: " +weightHiddenToOutput[i]);
-        }
-        weightHiddenToOutput[numHidden] += learningRate * outputError * 1
-                + momentumTerm * getPreviousToOutDeltaWeight(numHidden);
-        // update previous weight
-        System.arraycopy(tempWeightHiddenToOutput, 0,
-                previousWeightHiddenToOutput, 0,
-                tempWeightHiddenToOutput.length);
-    }
-
-    private double getPreviousToOutDeltaWeight(int i) {
-        if (previousWeightHiddenToOutput[i] != 0)
-            return weightHiddenToOutput[i] - previousWeightHiddenToOutput[i];
-        else
-            return 0;
-    }
-
-    private double getPreviousToHiddenDeltaWeight(int i, int j) {
-        if (previousWeightInputToHidden[i][j] != 0)
-            return weightInputToHidden[i][j]
-                    - previousWeightInputToHidden[i][j];
-        else
-            return 0;
-    }
     /**
      * Write either LUT or weights to for the NN to a file
      * @param argFile: type file input
      */
-    public void save(File argFile){
-        PrintStream saveFile = null;
+    public void save(File argFile)  throws FileNotFoundException{
+        PrintWriter pw = new PrintWriter(argFile);
+        StringBuilder builder = new StringBuilder();
+        String ColumnNamesList = "Node, Weights";
 
-        try {
-            saveFile = new PrintStream( new FileOutputStream( argFile ));
-        }
-        catch (IOException e) {
-            System.out.println( "*** Could not create output stream for NN save file.");
-        }
-
-        saveFile.println(numInputs);
-        saveFile.println(numHidden);
-
-        // First save the weights from the input to hidden neurons (one line per weight)
-        for ( int i=0; i<numHidden; i++) {
-            for ( int j=0; j<numInputs; j++) {
-                saveFile.println( weightInputToHidden [i][j] );
+        for(int i = 0; i < argNumInputs + 1; i++){
+            for(int j = 0; j < argNumHidden; j++){
+                builder.append(x2h_w[j][i]);
+                builder.append("\n");
             }
-            saveFile.println(weightInputToHidden [i][numInputs]); // Save bias weight for this hidden neuron too
         }
-        // Now save the weights from the hidden to the output neuron
-        for (int i=0; i<numHidden; i++) {
-            saveFile.println(weightHiddenToOutput[i]);
+
+        //Neuron Layer Delimiter for Loading Purposes
+        builder.append("-");
+
+        for(int i = 0; i < argNumHidden; i++){
+            builder.append(h2y_w[i]);
+            builder.append("\n");
         }
-        saveFile.println(weightHiddenToOutput[numHidden]); // Save bias weight for output neuron too.
-        saveFile.close();
+
+        builder.append("*");
+        pw.write(builder.toString());
+        pw.close();
     }
 
     /**
@@ -349,40 +260,49 @@ public class NeuralNet implements NeuralNetInterface{
      * @param argFileName
      * @throws IOException
      */
-    public void load(String argFileName) throws IOException{
+    public void load(String argFileName) throws IOException {
+        String csvFile = argFileName;
+        String line = "";
+        String cvsSplitBy = ",";
 
-        FileInputStream inputFile = new FileInputStream( argFileName );
-        BufferedReader inputReader = new BufferedReader(new InputStreamReader( inputFile ));
+        try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
+            int weightcount = 0;
+            int rownum = 0;
+            int colnum = 0;
+            while ((line = br.readLine()) != "-") {
+                // use comma as separator
+                String[] node_info = line.split(cvsSplitBy);
+                weightcount += 1;
+                System.out.println("[Node Number: " + node_info[0] + " , Weight =" + node_info[1]);
 
-        // Check that NN defined for file matches that created
-        int numInputInFile = Integer.valueOf( inputReader.readLine() );
-        int numHiddenInFile = Integer.valueOf( inputReader.readLine() );
-
-        if (numInputInFile != numInputs) {
-            System.out.println ( "*** Number of inputs in file is " + numInputInFile + " Expected " + numInputs );
-            throw new IOException();
-        }
-        if (numHiddenInFile != numHidden) {
-            System.out.println ( "*** Number of hidden in file is " + numHiddenInFile + " Expected " + numHidden );
-            throw new IOException();
-        }
-        if ((numInputInFile != numInputs) || (numHiddenInFile != numHidden)) {
-            return;
-        }
-
-        // First load the weights from the input to hidden neurons (one line per weight)
-        for ( int i=0; i<numHidden; i++) {
-            for ( int j=0; j<numInputs; j++) {
-                weightInputToHidden [i][j] = Double.valueOf( inputReader.readLine() );
+                if(weightcount <= argNumHidden * (argNumInputs + 1)){
+                    rownum = (int)(Math.floor(weightcount /(argNumHidden)));
+                    colnum = weightcount % argNumHidden;
+                    x2h_w[rownum][colnum] = Double.parseDouble(node_info[1]);
+                }
+                else{
+                    throw new Error("Incorrect neuron dimension!");
+                }
             }
-            weightInputToHidden [i][numInputs] = Double.valueOf( inputReader.readLine() ); // Load bias weight for this hidden neuron too
-        }
-        // Now load the weights from the hidden to the output neuron
-        for (int i=0; i<numHidden; i++) {
-            weightHiddenToOutput [i] = Double.valueOf( inputReader.readLine() );
-        }
-        weightHiddenToOutput [numHidden] = Double.valueOf( inputReader.readLine() ); // Load bias weight for output neuron too.
 
-        inputReader.close();
+            weightcount = 0;
+            while ((line = br.readLine()) != "-") {
+                // use comma as separator
+                String[] node_info = line.split(cvsSplitBy);
+                weightcount += 1;
+                System.out.println("[Node Number: " + node_info[0] + " , Weight =" + node_info[1]);
+
+                if(weightcount <= argNumHidden){
+                    h2y_w[weightcount] = Double.parseDouble(node_info[1]);
+                }
+                else{
+                    throw new Error("Incorrect neuron dimension!");
+                }
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
+

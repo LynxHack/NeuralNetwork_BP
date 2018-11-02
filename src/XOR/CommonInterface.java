@@ -1,6 +1,7 @@
 package XOR;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 
 
@@ -27,7 +28,7 @@ public interface CommonInterface {
      * Write either LUT or weights to for the NN to a file
      * @param argFile: type file input
      */
-    public void save(File argFile);
+    public void save(File argFile) throws FileNotFoundException;
 
     /**
      * Loads LUT / NN weights from given file. Load have knowledge of how data
